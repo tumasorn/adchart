@@ -98,12 +98,15 @@
   }
 
   // ---------- flow ----------
+  let seq = 0; // only the latest request may render (a slow earlier one must not overwrite it)
   async function load(category) {
+    const my = ++seq;
     state.current = category;
     renderChips();
     $("#ranking").innerHTML = `<div class="skel" style="height:280px"></div>`;
     try {
       const d = await api(category, state.email);
+      if (my !== seq) return d;
       state.data = d;
       if (!state.categories.length) {
         state.categories = d.categories || [];
@@ -115,6 +118,7 @@
       renderRanking(d.category);
       return d;
     } catch (e) {
+      if (my !== seq) return;
       $("#ranking").innerHTML = `<div class="empty">${esc(e.message)} <br><button class="btn primary" style="margin-top:12px" onclick="location.reload()">ลองใหม่</button></div>`;
     }
   }
