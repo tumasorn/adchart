@@ -14,7 +14,7 @@ type Row = {
 };
 
 // clips ABOUT ads rather than ads themselves (how-to remove pop-ups, ad-vs-reality, reactions)
-const NOT_AD = /วิธี|ลบโฆษณา|บล็อก|ปิดโฆษณา|เด้ง|ป๊อปอัพ|ไวรัส|vs\.?\s*ความเป็นจริง|เทคนิค|ทริค|reaction|รีแอค|ดูโฆษณา|ต่างชาติ|ฝรั่ง|บทความ/i;
+const NOT_AD = /วิธี|ลบโฆษณา|บล็อก|ปิดโฆษณา|เด้ง|ป๊อปอัพ|ไวรัส|vs\.?\s*ความเป็นจริง|เทคนิค|ทริค|reaction|รีแอค|ดูโฆษณา|ต่างชาติ|ฝรั่ง|บทความ|แนะนำ|รีวิว|review|meme|illegal|สเปค|สอน|บอกต่อ|^\s*\d+\s*(อันดับ|เกม|game)/i;
 
 async function search(params: Record<string, string>) {
   const u = new URL(BRAVE);
@@ -72,7 +72,11 @@ Deno.serve(async (req) => {
   }
   if (!KEY) return json({ error: "BRAVE_API_KEY secret is not set" }, 500);
 
-  const { data: cats, error } = await db.from("categories").select("id, query, match");
+  // optional {"only":"game"} body re-scrapes one category (for tuning without spending credit on all)
+  const only = await req.json().then((b) => (typeof b?.only === "string" ? b.only : "")).catch(() => "");
+  let q = db.from("categories").select("id, query, match");
+  if (only) q = q.eq("id", only);
+  const { data: cats, error } = await q;
   if (error) return json({ error: error.message }, 500);
 
   const report: Record<string, string | number> = {};
