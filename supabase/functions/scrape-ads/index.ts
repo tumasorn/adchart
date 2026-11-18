@@ -16,6 +16,12 @@ type Row = {
 // clips ABOUT ads rather than ads themselves (how-to remove pop-ups, ad-vs-reality, reactions)
 const NOT_AD = /วิธี|ลบโฆษณา|บล็อก|ปิดโฆษณา|เด้ง|ป๊อปอัพ|ไวรัส|vs\.?\s*ความเป็นจริง|เทคนิค|ทริค|reaction|รีแอค|ดูโฆษณา|ต่างชาติ|ฝรั่ง|บทความ|แนะนำ|รีวิว|review|meme|illegal|สเปค|สอน|บอกต่อ|^\s*\d+\s*(อันดับ|เกม|game)/i;
 
+// "Official only": the channel name must contain a known brand (categories.brands, all rows
+// unioned) and must not look like a fan / re-upload / news channel.
+const NOT_OFFICIAL = /buzz|club|\bfans?\b|แฟน|tvc|โฆษณา|รวม|archive|retro|ย้อน|re-?upload|news|ข่าว|\btnn\b/i;
+let OFFICIAL: RegExp | null = null;
+const isOfficial = (channel: string) => !!OFFICIAL && OFFICIAL.test(channel) && !NOT_OFFICIAL.test(channel);
+
 async function search(params: Record<string, string>) {
   const u = new URL(BRAVE);
   u.search = new URLSearchParams(params).toString();
@@ -32,7 +38,7 @@ async function page(query: string, offset: number): Promise<any[]> {
 
 // `query` may hold several searches separated by ";" (max 3). Short searches
 // match more videos than one long one; results are merged, filtered, ranked.
-// 6 categories × 3 searches × 30 days ≈ 540 requests/month (free credit ≈ 1,000).
+// 7 categories × 3 searches × 30 days ≈ 630 requests/month (free credit ≈ 1,000).
 async function topTen(query: string, match: string | null): Promise<Row[]> {
   // category keyword check: the search engine pads weak matches with unrelated ads
   const fits = match ? new RegExp(match, "i") : null;
@@ -58,7 +64,7 @@ function pick(results: any[], fits: RegExp | null) {
       raw: x,
     }))
     .filter((x) => /^https:\/\//.test(x.url) && x.view_count > 0 && x.thumbnail_url && !NOT_AD.test(x.title) &&
-      (!fits || fits.test(`${x.title} ${x.channel}`)) && !seen.has(x.url) && seen.add(x.url))
+      (!fits || fits.test(`${x.title} ${x.channel}`)) && isOfficial(x.channel) && !seen.has(x.url) && seen.add(x.url))
     .sort((a, b) => b.view_count - a.view_count);
 }
 
@@ -74,10 +80,12 @@ Deno.serve(async (req) => {
 
   // optional {"only":"game"} body re-scrapes one category (for tuning without spending credit on all)
   const only = await req.json().then((b) => (typeof b?.only === "string" ? b.only : "")).catch(() => "");
-  let q = db.from("categories").select("id, query, match");
-  if (only) q = q.eq("id", only);
-  const { data: cats, error } = await q;
+  const { data: all, error } = await db.from("categories").select("id, query, match, brands");
   if (error) return json({ error: error.message }, 500);
+  const brandList = (all ?? []).map((c) => c.brands).filter(Boolean).join("|");
+  if (!brandList) return json({ error: "no brands configured in categories.brands" }, 500);
+  OFFICIAL = new RegExp(brandList, "i");
+  const cats = only ? (all ?? []).filter((c) => c.id === only) : all;
 
   const report: Record<string, string | number> = {};
   for (const c of cats ?? []) {
