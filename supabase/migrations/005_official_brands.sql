@@ -12,3 +12,14 @@ update public.categories set brands = v.b from (values
   ('finance', 'thailife|ไทยประกันชีวิต|kbank|kasikorn|กสิกร|\bscb\b|ไทยพาณิชย์|krungsri|กรุงศรี|krungthai|กรุงไทย|bangkok ?bank|ธนาคารกรุงเทพ|\bttb\b|\btmb\b|kiatnakin|เกียรตินาคิน|\bgsb\b|ออมสิน|\bbaac\b|\buob\b|cimb|lh ?bank|\baia\b|muang ?thai|เมืองไทยประกัน|allianz|\bfwd\b|\baxa\b|prudential|tokio ?marine|dhipaya|ทิพย|viriyah|วิริยะ|bangkok ?insurance|\bktc\b|aeon|first ?choice|truemoney|line ?bk'),
   ('game',    'garena|free ?fire|\brov\b|tencent|level ?infinite|moonton|mobile ?legends|pubg|krafton|hoyoverse|genshin|honkai|riot ?games|valorant|playstation|nintendo|xbox|supercell|ubisoft|line ?games|netmarble|gravity|ragnarok|cookie ?run|devsisters|roblox|mojang|com2us|nexon|gameloft')
 ) as v(id, b) where categories.id = v.id;
+
+-- Brand-name searches find official channels best (scraper runs up to 4 per category, split by ";").
+-- 25 searches/day ≈ 750 Brave requests/month (free credit ≈ 1,000).
+update public.categories set query = v.q from (values
+  ('food',    'Nestle Thailand โฆษณา; Osotspa โฆษณา; Coca-Cola Thailand โฆษณา; Oishi โฆษณา'),
+  ('beauty',  'NIVEA Thailand โฆษณา; Mistine โฆษณา; Citra Thailand โฆษณา; Pond''s Thailand โฆษณา'),
+  ('tech',    'Samsung Thailand โฆษณา; OPPO Thailand โฆษณา; vivo Thailand โฆษณา; AIS โฆษณา'),
+  ('car',     'Toyota Motor Thailand โฆษณา; Honda Thailand โฆษณา; Isuzu โฆษณา; MG Thailand โฆษณา'),
+  ('emotion', 'ไทยประกันชีวิต โฆษณา ซึ้ง; โฆษณาซึ้ง; หนังโฆษณา เรียกน้ำตา'),
+  ('game',    'Garena Free Fire TH โฆษณา; ROV Thailand โฆษณา; PUBG Mobile Thailand โฆษณา')
+) as v(id, q) where categories.id = v.id;

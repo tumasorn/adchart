@@ -36,14 +36,14 @@ async function page(query: string, offset: number): Promise<any[]> {
   return (await r.json()).results ?? [];
 }
 
-// `query` may hold several searches separated by ";" (max 3). Short searches
-// match more videos than one long one; results are merged, filtered, ranked.
-// 7 categories × 3 searches × 30 days ≈ 630 requests/month (free credit ≈ 1,000).
+// `query` may hold several searches separated by ";" (max 4). Short brand searches
+// find official channels best; results are merged, filtered, ranked.
+// Current setup: 25 searches/day ≈ 750 requests/month (Brave free credit ≈ 1,000).
 async function topTen(query: string, match: string | null): Promise<Row[]> {
   // category keyword check: the search engine pads weak matches with unrelated ads
   const fits = match ? new RegExp(match, "i") : null;
   const all: any[] = [];
-  for (const q of query.split(";").map((s) => s.trim()).filter(Boolean).slice(0, 3)) {
+  for (const q of query.split(";").map((s) => s.trim()).filter(Boolean).slice(0, 4)) {
     all.push(...(await page(q, 0)));
     await new Promise((ok) => setTimeout(ok, 1100)); // stay under 1 request/second
   }
