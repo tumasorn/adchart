@@ -14,7 +14,7 @@ type Row = {
 };
 
 // clips ABOUT ads rather than ads themselves (how-to remove pop-ups, ad-vs-reality, reactions)
-const NOT_AD = /วิธี|ลบโฆษณา|บล็อก|ปิดโฆษณา|เด้ง|ป๊อปอัพ|ไวรัส|vs\.?\s*ความเป็นจริง|เทคนิค|ทริค|reaction|รีแอค|ดูโฆษณา|ต่างชาติ|ฝรั่ง|บทความ|แนะนำ|รีวิว|review|meme|illegal|สเปค|สอน|บอกต่อ|^\s*\d+\s*(อันดับ|เกม|game)/i;
+const NOT_AD = /วิธี|ลบโฆษณา|บล็อก|ปิดโฆษณา|เด้ง|ป๊อปอัพ|ไวรัส|vs\.?\s*ความเป็นจริง|เทคนิค|ทริค|reaction|รีแอค|ดูโฆษณา|ต่างชาติ|ฝรั่ง|บทความ|แนะนำ|รีวิว|review|meme|illegal|สเปค|สอน|บอกต่อ|highlight|championship|qualifier|grand ?final|tournament|esports?|🔴|livestream|ไลฟ์สด|ถ่ายทอดสด|unboxing|แกะกล่อง|gameplay|^\s*\d+\s*(อันดับ|เกม|game)/i;
 
 // "Official only": the channel name must contain a known brand (categories.brands, all rows
 // unioned) and must not look like a fan / re-upload / news channel.
@@ -68,6 +68,32 @@ function pick(results: any[], fits: RegExp | null) {
     .sort((a, b) => b.view_count - a.view_count);
 }
 
+// Tuning helper: per search, how many results came back and why each was dropped. Writes nothing.
+async function dryRun(db: ReturnType<typeof admin>, id: string, queryOverride: string | null) {
+  const { data: all } = await db.from("categories").select("id, query, match, brands");
+  const cat = (all ?? []).find((c) => c.id === id);
+  if (!cat) return json({ error: "no such category" }, 404);
+  OFFICIAL = new RegExp((all ?? []).map((c) => c.brands).filter(Boolean).join("|"), "i");
+  const fits = cat.match ? new RegExp(cat.match, "i") : null;
+  const out: unknown[] = [];
+  for (const q of (queryOverride ?? cat.query).split(";").map((s: string) => s.trim()).filter(Boolean).slice(0, 4)) {
+    const res = await page(q, 0);
+    const kept: string[] = [], dropped: Record<string, string[]> = {};
+    for (const x of res) {
+      const title = String(x.title ?? "").replace(/\s*[-|–]\s*(YouTube|TikTok|Facebook|Vimeo|Dailymotion)\s*$/i, "").trim();
+      const channel = x.video?.creator ?? x.video?.publisher ?? x.meta_url?.hostname ?? "";
+      const views = Number(x.video?.views ?? 0);
+      const why = !views ? "no_views" : NOT_AD.test(title) ? "not_ad" : fits && !fits.test(`${title} ${channel}`) ? "off_category"
+        : !isOfficial(channel) ? "not_official" : "";
+      const line = `${channel} | ${views} | ${title.slice(0, 50)}`;
+      if (why) (dropped[why] ??= []).push(line); else kept.push(line);
+    }
+    out.push({ q, results: res.length, kept, dropped: Object.fromEntries(Object.entries(dropped).map(([k, v]) => [k, v.slice(0, 12)])) });
+    await new Promise((ok) => setTimeout(ok, 1100));
+  }
+  return json({ dry: true, id, out });
+}
+
 Deno.serve(async (req) => {
   const db = admin();
   // shared secret lives in public.app_secrets (RLS on, no policies -> only service role can read)
@@ -78,8 +104,12 @@ Deno.serve(async (req) => {
   }
   if (!KEY) return json({ error: "BRAVE_API_KEY secret is not set" }, 500);
 
-  // optional {"only":"game"} body re-scrapes one category (for tuning without spending credit on all)
-  const only = await req.json().then((b) => (typeof b?.only === "string" ? b.only : "")).catch(() => "");
+  // optional body:
+  //   {"only":"game"}                         re-scrape one category
+  //   {"only":"food","dry":true,"query":"…"}  try searches for one category: report kept/dropped, save nothing
+  const body = await req.json().catch(() => ({}));
+  const only = typeof body?.only === "string" ? body.only : "";
+  if (only && body?.dry) return dryRun(db, only, typeof body.query === "string" ? body.query : null);
   const { data: all, error } = await db.from("categories").select("id, query, match, brands");
   if (error) return json({ error: error.message }, 500);
   const brandList = (all ?? []).map((c) => c.brands).filter(Boolean).join("|");
