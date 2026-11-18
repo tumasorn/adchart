@@ -2,7 +2,7 @@
   const C = window.APP_CONFIG || {};
   const DEMO = !C.API_URL;
   const $ = (s) => document.querySelector(s);
-  const EMAIL_KEY = "adrank_email";
+  const EMAIL_KEY = "adrank_email"; // kept from the old name so saved donor emails still work
 
   const store = {
     get() { try { return localStorage.getItem(EMAIL_KEY) || ""; } catch { return ""; } },

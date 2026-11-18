@@ -28,6 +28,9 @@ img { display: block; max-width: 100%; }
 .top { position: sticky; top: 0; z-index: 10; background: rgba(15,15,20,.86); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
 .top-in { display: flex; align-items: center; justify-content: space-between; height: 56px; }
 .logo { font-weight: 700; font-size: 20px; display: flex; align-items: center; gap: 8px; }
+.logo > span:last-child { display: flex; flex-direction: column; line-height: 1.05; }
+.logo sup { font-size: 10px; color: var(--accent); margin-left: 2px; vertical-align: super; }
+.logo small { font-size: 11px; font-weight: 500; color: var(--muted); }
 .logo-mark { background: var(--accent); width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; font-size: 12px; }
 .updated { color: var(--muted); font-size: 12px; text-align: right; }
 

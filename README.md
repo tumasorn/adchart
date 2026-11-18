@@ -1,6 +1,8 @@
-# AdRank — เว็บจัดอันดับโฆษณาตามยอดวิว
+# แอดชาร์ต AdChart TH — ชาร์ตโฆษณาไทยตามยอดวิว
 
-🌐 **เว็บจริง:** https://tumasorn.github.io/adrank/ — push ไฟล์ใน `web/` ขึ้น `main` แล้ว GitHub Actions จะ deploy ให้อัตโนมัติ
+(ชื่อเดิม AdRank — เปลี่ยนเพราะชนกับคำว่า "Ad Rank" ของ Google Ads)
+
+🌐 **เว็บจริง:** https://tumasorn.github.io/adchart/ — push ไฟล์ใน `web/` ขึ้น `main` แล้ว GitHub Actions จะ deploy ให้อัตโนมัติ
 
 - หน้าแรก: **3 โฆษณายอดวิวสูงสุดของทั้งเว็บ** เป็นการ์ด (รูป + ยอดวิวด้านล่าง) → กดการ์ดเปิดลิงก์โฆษณาทันที
 - เลือกหมวดหมู่ → เห็นอันดับ 1–3 ฟรี, อันดับ 4–10 ล็อกไว้ ต้องบริจาคผ่าน **Ko-fi** หรือ **Stripe**
@@ -45,7 +47,7 @@ python -m http.server 5173 --directory web
 
 ## สถานะปัจจุบัน (18 พ.ย. 2026)
 
-ติดตั้งบน Supabase โปรเจกต์ **adrank** (ref `aekxigtnorhphvzqgyqv`, สิงคโปร์) แล้ว:
+ติดตั้งบน Supabase โปรเจกต์ **adrank** (ชื่อโปรเจกต์ใน Supabase ยังเป็นชื่อเดิม, ref `aekxigtnorhphvzqgyqv`, สิงคโปร์) แล้ว:
 ตาราง + RLS, ฟังก์ชันทั้ง 4 ตัว, ตั้งเวลาดึงข้อมูลตี 3 ทุกวัน (รหัส cron สร้างสุ่มอยู่ในตาราง `app_secrets` ไม่ต้องตั้งเอง)
 และ `web/config.js` ชี้ไป API จริงแล้ว
 
@@ -87,9 +89,9 @@ select net.http_post(
    ```
 5. **Ko-fi** — ใช้หน้า Ko-fi ร่วมกับเกม Wood Gate (`ko-fi.com/woodgatesupport`). Ko-fi ตั้ง webhook ได้ที่เดียว
    จึง **ไม่ต้องเปลี่ยน** webhook ใน Ko-fi: ฟังก์ชัน `kofi-webhook` ของเกม (โปรเจกต์ hnkqzebtrozfhsjbsqie)
-   ตรวจ token แล้วส่งต่อมาที่ AdRank ให้อัตโนมัติ (ถ้า AdRank ล่ม เกมยังเติมหัวใจได้ปกติ)
-   แค่ใส่ secret `KOFI_VERIFICATION_TOKEN` ใน AdRank ด้วย **ค่าเดียวกับของเกม**
-   หมายเหตุ: ใครบริจาคให้เกมก็ปลดล็อก AdRank ได้ด้วย (หน้า Ko-fi เดียวกัน แยกไม่ได้)
+   ตรวจ token แล้วส่งต่อมาที่ AdChart ให้อัตโนมัติ (ถ้า AdChart ล่ม เกมยังเติมหัวใจได้ปกติ)
+   แค่ใส่ secret `KOFI_VERIFICATION_TOKEN` ใน AdChart ด้วย **ค่าเดียวกับของเกม**
+   หมายเหตุ: ใครบริจาคให้เกมก็ปลดล็อก AdChart ได้ด้วย (หน้า Ko-fi เดียวกัน แยกไม่ได้)
    (ถ้าในอนาคตแยกบัญชี Ko-fi: ตั้ง Webhook URL ใหม่เป็น:
    `https://<PROJECT_REF>.supabase.co/functions/v1/kofi-webhook` แล้วคัดลอก *Verification Token* ไปใส่ secret)
 6. **Stripe** — สร้าง *Payment Link* (เลือก "ลูกค้ากำหนดจำนวนเงินเอง") →

@@ -4,7 +4,7 @@ window.APP_CONFIG = {
   // เช่น "https://abcdefgh.supabase.co/functions/v1/rankings"
   API_URL: "https://aekxigtnorhphvzqgyqv.supabase.co/functions/v1/rankings",
 
-  // หน้า Ko-fi (ใช้ร่วมกับเกม Wood Gate — webhook ของเกมส่งต่อการบริจาคมาที่ AdRank)
+  // หน้า Ko-fi (ใช้ร่วมกับเกม Wood Gate — webhook ของเกมส่งต่อการบริจาคมาที่ AdChart)
   KOFI_URL: "https://ko-fi.com/woodgatesupport",
 
   // Stripe Payment Link เช่น "https://buy.stripe.com/xxxx"
