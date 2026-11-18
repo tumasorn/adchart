@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>AdRank — จัดอันดับโฆษณายอดวิวสูงสุด</title>
+  <meta name="description" content="จัดอันดับโฆษณาที่มีคนดูมากที่สุด 10 อันดับในแต่ละหมวด อัปเดตทุกวัน" />
+  <meta name="theme-color" content="#0f0f14" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="wrap top-in">
+      <a class="logo" href="./"><span class="logo-mark">▶</span> AdRank</a>
+      <span class="updated" id="updated"></span>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div class="demo-banner" id="demoBanner" hidden>โหมดตัวอย่าง — ข้อมูลจำลอง ยังไม่ได้เชื่อมฐานข้อมูล</div>
+
+    <section aria-labelledby="h-top">
+      <h1 id="h-top" class="h">🔥 3 โฆษณายอดวิวสูงสุดของเว็บ</h1>
+      <div class="top3" id="top3"></div>
+    </section>
+
+    <section aria-labelledby="h-cat" class="cat-section">
+      <h2 id="h-cat" class="h">เลือกหมวดหมู่</h2>
+      <nav class="chips" id="chips" aria-label="หมวดหมู่"></nav>
+      <div id="ranking" class="ranking" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <footer class="foot wrap">
+    อัปเดตอันดับอัตโนมัติทุกวัน · ยอดวิวรวบรวมจาก search engine · กดการ์ดเพื่อดูโฆษณา
+  </footer>
+
+  <!-- donate sheet -->
+  <dialog id="donate" class="sheet">
+    <form method="dialog" class="sheet-close"><button aria-label="ปิด">✕</button></form>
+    <h3>☕ ปลดล็อกอันดับ 4–10</h3>
+    <p class="muted">บริจาคเท่าไหร่ก็ได้ เพื่อดูอันดับครบทุกหมวด <b id="unlockDays">30</b> วัน</p>
+    <label class="field">
+      <span>อีเมลที่ใช้บริจาค</span>
+      <input id="email" type="email" inputmode="email" autocomplete="email" placeholder="you@email.com" required />
+    </label>
+    <div class="pay">
+      <a id="kofiBtn" class="btn kofi" target="_blank" rel="noopener">☕ บริจาคผ่าน Ko-fi</a>
+      <a id="stripeBtn" class="btn stripe" target="_blank" rel="noopener">💳 บัตร / Stripe</a>
+    </div>
+    <p class="hint">บริจาคเสร็จแล้ว กลับมากดปุ่มด้านล่าง (ใช้อีเมลเดียวกับที่บริจาค)</p>
+    <button id="checkBtn" class="btn primary" type="button">ฉันบริจาคแล้ว — ปลดล็อก</button>
+    <p id="msg" class="msg" role="status"></p>
+  </dialog>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
