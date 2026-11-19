@@ -28,8 +28,9 @@ async function search(params: Record<string, string>) {
   return fetch(u, { headers: { Accept: "application/json", "X-Subscription-Token": KEY } });
 }
 
-async function page(query: string, offset: number): Promise<any[]> {
-  const base = { q: query, count: "50", offset: String(offset) };
+async function page(query: string, offset: number, freshness = ""): Promise<any[]> {
+  const base: Record<string, string> = { q: query, count: "50", offset: String(offset) };
+  if (freshness) base.freshness = freshness; // pd / pw / pm / py
   let r = await search({ ...base, safesearch: "strict", search_lang: "th", country: "ALL" });
   if (r.status === 422) r = await search(base); // unsupported lang/country → plain query
   if (!r.ok) throw new Error(`brave ${r.status}: ${(await r.text()).slice(0, 200)}`);
@@ -38,13 +39,14 @@ async function page(query: string, offset: number): Promise<any[]> {
 
 // `query` may hold several searches separated by ";" (max 4). Short brand searches
 // find official channels best; results are merged, filtered, ranked.
-// Current setup: 25 searches/day ≈ 750 requests/month (Brave free credit ≈ 1,000).
-async function topTen(query: string, match: string | null) {
+// Current setup: 25 searches/day ≈ 750 requests/month (Brave free credit ≈ 1,000). Trending has no
+// searches of its own (query ''); it ranks the snapshot pool built by the other categories.
+async function topTen(query: string, match: string | null, freshness = "") {
   // category keyword check: the search engine pads weak matches with unrelated ads
   const fits = match ? new RegExp(match, "i") : null;
   const all: any[] = [];
   for (const q of query.split(";").map((s) => s.trim()).filter(Boolean).slice(0, 4)) {
-    all.push(...(await page(q, 0)));
+    all.push(...(await page(q, 0, freshness)));
     await new Promise((ok) => setTimeout(ok, 1100)); // stay under 1 request/second
   }
   const pool = pick(all, fits).map(({ raw: _raw, ...x }) => x); // every official ad found (for trending)
@@ -53,6 +55,7 @@ async function topTen(query: string, match: string | null) {
 }
 
 // ---------- trending ("มาแรง"): views gained per day ----------
+const TRENDING = "trending";
 const bangkokDay = (offsetDays = 0) =>
   new Date(Date.now() + 7 * 3600e3 + offsetDays * 864e5).toISOString().slice(0, 10);
 
@@ -69,7 +72,7 @@ async function allRows(q: () => any) { // PostgREST returns at most 1000 rows pe
 async function rankTrending(db: ReturnType<typeof admin>) {
   const today = bangkokDay(), since = bangkokDay(-8);
   const snaps = await allRows(() => db.from("view_snapshots")
-    .select("video_id, day, view_count, title, channel, thumbnail_url, url, published_at")
+    .select("video_id, day, view_count, title, channel, thumbnail_url, url, published_at, taken_at")
     .gte("day", since).order("day", { ascending: false }));
   const todayRows = snaps.filter((s) => s.day === today);
   const prevById = new Map<string, any>(); // latest earlier snapshot per video (rows are newest first)
@@ -78,7 +81,8 @@ async function rankTrending(db: ReturnType<typeof admin>) {
   const scored = todayRows.map((s) => {
     const prev = prevById.get(s.video_id);
     if (prev) {
-      const days = Math.max(1, (Date.parse(today) - Date.parse(prev.day)) / 864e5);
+      // real elapsed time between the two snapshots (at least 6 hours, so tiny gaps don't blow up)
+      const days = Math.max(0.25, (Date.parse(s.taken_at) - Date.parse(prev.taken_at)) / 864e5);
       return { s, gain: Math.round((s.view_count - prev.view_count) / days) };
     }
     // no history yet: average views/day since publish, only for recent ads (first days only)
@@ -124,7 +128,7 @@ async function dryRun(db: ReturnType<typeof admin>, id: string, queryOverride: s
   const fits = cat.match ? new RegExp(cat.match, "i") : null;
   const out: unknown[] = [];
   for (const q of (queryOverride ?? cat.query).split(";").map((s: string) => s.trim()).filter(Boolean).slice(0, 4)) {
-    const res = await page(q, 0);
+    const res = await page(q, 0, id === TRENDING ? "pm" : "");
     const kept: string[] = [], dropped: Record<string, string[]> = {};
     for (const x of res) {
       const title = String(x.title ?? "").replace(/\s*[-|–]\s*(YouTube|TikTok|Facebook|Vimeo|Dailymotion)\s*$/i, "").trim();
@@ -132,7 +136,7 @@ async function dryRun(db: ReturnType<typeof admin>, id: string, queryOverride: s
       const views = Number(x.video?.views ?? 0);
       const why = !views ? "no_views" : NOT_AD.test(title) ? "not_ad" : fits && !fits.test(`${title} ${channel}`) ? "off_category"
         : !isOfficial(channel) ? "not_official" : "";
-      const line = `${channel} | ${views} | ${title.slice(0, 50)}`;
+      const line = `${channel} | ${views} | ${String(x.page_age ?? "").slice(0, 10)} | ${title.slice(0, 50)}`;
       if (why) (dropped[why] ??= []).push(line); else kept.push(line);
     }
     out.push({ q, results: res.length, kept, dropped: Object.fromEntries(Object.entries(dropped).map(([k, v]) => [k, v.slice(0, 12)])) });
@@ -167,25 +171,31 @@ Deno.serve(async (req) => {
   const report: Record<string, string | number> = {};
   const today = bangkokDay();
   for (const c of cats ?? []) {
-    if (!c.query?.trim()) continue; // computed categories (trending) aren't searched
+    if (!c.query?.trim()) continue;
     try {
-      const { top, pool } = await topTen(c.query, c.match);
-      const { error: e } = await db.rpc("replace_category_ads", { p_category: c.id, p_rows: top });
-      if (e) throw e;
+      // trending's own searches (if any) look at the past month only; they just feed the snapshot pool
+      const isTrend = c.id === TRENDING;
+      const { top, pool } = await topTen(c.query, c.match, isTrend ? "pm" : "");
+      if (!isTrend) {
+        const { error: e } = await db.rpc("replace_category_ads", { p_category: c.id, p_rows: top });
+        if (e) throw e;
+      }
       // today's view count for every official ad found -> history for "มาแรง"
       const { error: se } = await db.from("view_snapshots").upsert(
         pool.map((x) => ({ video_id: x.video_id, day: today, view_count: x.view_count, title: x.title,
-          channel: x.channel, thumbnail_url: x.thumbnail_url, url: x.url, published_at: x.published_at })),
+          channel: x.channel, thumbnail_url: x.thumbnail_url, url: x.url, published_at: x.published_at,
+          taken_at: new Date().toISOString() })),
         { onConflict: "video_id,day" },
       );
-      report[c.id] = se ? `${top.length} (snapshot error: ${se.message})` : top.length;
+      const n = isTrend ? `${pool.length} new ads found` : top.length;
+      report[c.id] = se ? `${n} (snapshot error: ${se.message})` : n;
     } catch (e) {
       report[c.id] = `error: ${(e as Error).message}`; // other categories keep going; old data kept
     }
   }
-  if (!only || only === "trending") {
-    try { report.trending = await rankTrending(db); }
-    catch (e) { report.trending = `error: ${(e as Error).message}`; }
+  if (!only || only === TRENDING) {
+    try { report.trending_ranked = await rankTrending(db); }
+    catch (e) { report.trending_ranked = `error: ${(e as Error).message}`; }
   }
   return json({ ok: true, report, at: new Date().toISOString() });
 });

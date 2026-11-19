@@ -43,3 +43,9 @@ revoke all on function public.replace_category_ads(text, jsonb) from public, ano
 insert into public.categories (id, name_th, name_en, emoji, query, match, brands, sort_order)
 values ('trending', 'มาแรง', 'Trending', '🔥', '', null, null, 0)
 on conflict (id) do nothing;
+
+-- exact snapshot time, so the daily gain uses real elapsed hours (today's first snapshot is
+-- ~8 h before the 03:00 run, not a full day)
+alter table public.view_snapshots add column if not exists taken_at timestamptz not null default now();
+-- trending has no searches of its own: Brave's past-month filter returned almost nothing
+update public.categories set query = '' where id = 'trending';
