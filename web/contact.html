@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>ติดต่อ — แอดชาร์ต AdChart TH</title>
+  <meta name="description" content="ติดต่อทีมแอดชาร์ต (AdChart TH) — แจ้งปัญหา ขอเพิ่มหรือลบโฆษณา ติดต่อแบรนด์และความร่วมมือ" />
+  <meta property="og:title" content="ติดต่อ — แอดชาร์ต AdChart TH" />
+  <meta property="og:image" content="https://tumasorn.github.io/adchart/og-image.png" />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <meta name="theme-color" content="#0f0f14" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="wrap top-in">
+      <a class="logo" href="./" aria-label="แอดชาร์ต AdChart TH — หน้าแรก"><img class="logo-mark" src="logo.svg" width="32" height="32" alt="" /> <span><span>AdChart<sup>TH</sup></span><small>แอดชาร์ต</small></span></a>
+      <a class="nav-link" href="./">← กลับหน้าชาร์ต</a>
+    </div>
+  </header>
+
+  <main class="wrap contact">
+    <h1 class="h">✉️ ติดต่อเรา</h1>
+    <p class="lead">มีคำถาม ข้อเสนอแนะ หรืออยากร่วมงานกับแอดชาร์ต ส่งอีเมลมาได้เลย</p>
+
+    <div class="contact-card">
+      <span class="contact-label">อีเมล</span>
+      <!-- address is assembled by script so simple spam bots can't read it from the HTML -->
+      <a id="mail" class="contact-email" data-u="tumasorn" data-d="gmail.com" href="#">กำลังโหลด…</a>
+      <noscript><span class="contact-email">tumasorn [at] gmail.com</span></noscript>
+      <div class="contact-actions">
+        <a id="mailBtn" class="btn primary" href="#">ส่งอีเมล</a>
+        <button id="copyBtn" class="btn ghost" type="button">คัดลอกอีเมล</button>
+      </div>
+      <p id="copyMsg" class="msg" role="status"></p>
+    </div>
+
+    <h2 class="h">ติดต่อเรื่องอะไรได้บ้าง</h2>
+    <ul class="topics">
+      <li><b>ปลดล็อกไม่ได้หลังบริจาค</b> — บอกอีเมลที่ใช้บริจาค ช่องทาง (Ko-fi / Stripe) และวันที่บริจาค</li>
+      <li><b>แจ้งโฆษณาผิดหมวด หรือไม่ใช่ช่องทางการ</b> — แนบลิงก์คลิปมาด้วย</li>
+      <li><b>แบรนด์ที่อยากให้ติดชาร์ต</b> — บอกชื่อช่องทางการของแบรนด์ (YouTube / TikTok / Facebook)</li>
+      <li><b>ขอนำคลิปออก</b> — เจ้าของคลิปหรือแบรนด์แจ้งพร้อมลิงก์ เราจะนำออกจากชาร์ต</li>
+      <li><b>ความร่วมมือ สื่อ หรือโฆษณาบนเว็บ</b></li>
+    </ul>
+    <p class="muted-note">ปกติตอบกลับภายใน 1–3 วันทำการ</p>
+  </main>
+
+  <footer class="foot wrap">
+    <a href="./">หน้าชาร์ต</a> · แอดชาร์ต AdChart TH
+  </footer>
+
+  <script>
+    (() => {
+      const a = document.getElementById("mail");
+      const addr = `${a.dataset.u}@${a.dataset.d}`;
+      const href = `mailto:${addr}?subject=${encodeURIComponent("ติดต่อจากแอดชาร์ต")}`;
+      a.textContent = addr; a.href = href;
+      document.getElementById("mailBtn").href = href;
+      const msg = document.getElementById("copyMsg");
+      document.getElementById("copyBtn").addEventListener("click", async () => {
+        try { await navigator.clipboard.writeText(addr); msg.textContent = "คัดลอกแล้ว"; msg.className = "msg ok"; }
+        catch { msg.textContent = addr; msg.className = "msg"; }
+      });
+    })();
+  </script>
+</body>
+</html>
