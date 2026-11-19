@@ -59,7 +59,9 @@
       <span class="n">${a.rank}</span>
       <span class="t"><img src="${esc(a.thumbnail_url)}" alt="" loading="lazy" /></span>
       <span class="meta">
-        <div class="v">${viewsHTML(a.view_count)}</div>
+        <div class="v">${a.daily_gain != null
+          ? `<span class="gain">▲ +${fmt(a.daily_gain)}</span><small>วิว/วัน</small><small class="total">· รวม ${fmt(a.view_count)}</small>`
+          : viewsHTML(a.view_count)}</div>
         <div class="tt">${esc(a.title)}</div>
       </span>
     </a>`;
@@ -72,8 +74,13 @@
 
   function renderRanking(cat) {
     const el = $("#ranking");
-    if (!cat || !cat.items?.length) { el.innerHTML = `<div class="empty">หมวดนี้ยังไม่มีข้อมูล</div>`; return; }
-    let html = cat.items.map(rowHTML).join("");
+    if (!cat || !cat.items?.length) {
+      el.innerHTML = `<div class="empty">${cat?.id === "trending"
+        ? "กำลังเก็บยอดวิวรายวัน — อันดับมาแรงจะขึ้นหลังรอบอัปเดตถัดไป"
+        : "หมวดนี้ยังไม่มีข้อมูล"}</div>`;
+      return;
+    }
+    let html = (cat.id === "trending" ? `<p class="note">เรียงตามยอดวิวที่เพิ่มขึ้นต่อวัน</p>` : "") + cat.items.map(rowHTML).join("");
     const hidden = Math.max(0, (cat.total || 10) - cat.items.length);
     if (!cat.unlocked && hidden > 0) {
       const from = cat.items.length + 1, to = cat.items.length + hidden;

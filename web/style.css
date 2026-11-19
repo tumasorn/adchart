@@ -101,6 +101,9 @@ a.row:hover, a.row:focus-visible { border-color: var(--accent); outline: none; }
 .row .meta { min-width: 0; }
 .row .v { font-weight: 700; font-size: 17px; }
 .row .v small { color: var(--muted); font-weight: 500; font-size: 12px; margin-left: 3px; }
+.row .v .gain { color: #7ee2a8; }
+.row .v small.total { font-weight: 400; }
+.note { margin: 0 0 2px; font-size: 13px; color: var(--muted); }
 .row .tt { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (min-width: 640px) { .row { grid-template-columns: 44px 168px 1fr; padding: 12px; } .row .tt { white-space: normal; } }
 

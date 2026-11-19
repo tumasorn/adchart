@@ -7,7 +7,7 @@ import { admin, cors, isEmail, json, normEmail } from "../_shared/util.ts";
 
 const UNLOCK_DAYS = Number(Deno.env.get("UNLOCK_DAYS") ?? "30");
 const FREE = 3;
-const COLS = "rank, video_id, title, channel, thumbnail_url, url, view_count, scraped_at, category_id";
+const COLS = "rank, video_id, title, channel, thumbnail_url, url, view_count, daily_gain, scraped_at, category_id";
 
 type Ad = { rank: number; video_id: string; view_count: number; scraped_at: string; category_id: string };
 
