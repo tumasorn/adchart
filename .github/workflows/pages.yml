@@ -1,10 +1,15 @@
-# Publishes only the web/ folder to GitHub Pages on every push to main.
+# Builds and publishes the site to GitHub Pages.
+# build/prerender.mjs writes the current rankings into real HTML (one page per category +
+# sitemap.xml) so search engines see the content. Runs on every push to main and once a day
+# at 03:45 Thailand time, after the 03:00 data update.
 name: Deploy site
 
 on:
   push:
     branches: [main]
-    paths: ["web/**", ".github/workflows/pages.yml"]
+    paths: ["web/**", "build/**", ".github/workflows/pages.yml"]
+  schedule:
+    - cron: "45 20 * * *"
   workflow_dispatch:
 
 permissions:
@@ -24,9 +29,13 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - uses: actions/configure-pages@v5
+      - run: node build/prerender.mjs
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: web
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v4

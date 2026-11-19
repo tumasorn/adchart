@@ -21,8 +21,9 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
+  <!--SSR:HEAD-->
 </head>
-<body>
+<body data-category="">
   <header class="top">
     <div class="wrap top-in">
       <a class="logo" href="./" aria-label="แอดชาร์ต AdChart TH"><img class="logo-mark" src="logo.svg" width="32" height="32" alt="" /> <span><span>AdChart<sup>TH</sup></span><small>แอดชาร์ต</small></span></a>
@@ -36,15 +37,18 @@
   <main class="wrap">
     <div class="demo-banner" id="demoBanner" hidden>โหมดตัวอย่าง — ข้อมูลจำลอง ยังไม่ได้เชื่อมฐานข้อมูล</div>
 
+    <h1 class="page-title"><!--SSR:H1-->ชาร์ตโฆษณาไทย ยอดวิวสูงสุด<!--/SSR:H1--></h1>
+    <p class="intro"><!--SSR:INTRO-->แอดชาร์ตจัดอันดับโฆษณาไทยจากช่องทางการของแบรนด์ ตามยอดวิวจริง แยกหมวดอาหาร มือถือ รถยนต์ ความงาม ธนาคาร เกม และโฆษณาซึ้ง พร้อมหมวดมาแรงที่ยอดวิวพุ่งเร็วที่สุด อัปเดตอัตโนมัติทุกวัน<!--/SSR:INTRO--></p>
+
     <section aria-labelledby="h-top">
-      <h1 id="h-top" class="h">🔥 3 โฆษณายอดวิวสูงสุดของเว็บ</h1>
-      <div class="top3" id="top3"></div>
+      <h2 id="h-top" class="h">🔥 3 โฆษณายอดวิวสูงสุดของเว็บ</h2>
+      <div class="top3" id="top3"><!--SSR:TOP3--></div>
     </section>
 
     <section aria-labelledby="h-cat" class="cat-section">
       <h2 id="h-cat" class="h">เลือกหมวดหมู่</h2>
-      <nav class="chips" id="chips" aria-label="หมวดหมู่"></nav>
-      <div id="ranking" class="ranking" aria-live="polite"></div>
+      <nav class="chips" id="chips" aria-label="หมวดหมู่"><!--SSR:CHIPS--></nav>
+      <div id="ranking" class="ranking" aria-live="polite"><!--SSR:LIST--></div>
     </section>
   </main>
 

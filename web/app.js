@@ -36,7 +36,7 @@
     el.innerHTML = list.map((a, i) => `
       <a class="card r${i + 1}" href="${esc(safeUrl(a.url))}" target="_blank" rel="noopener" aria-label="อันดับ ${i + 1}: ${esc(a.title)}">
         <div class="thumb">
-          <img src="${esc(a.thumbnail_url)}" alt="" loading="${i ? "lazy" : "eager"}" />
+          <img src="${esc(a.thumbnail_url)}" alt="${esc(a.title)}" loading="${i ? "lazy" : "eager"}" />
           <span class="badge">#${i + 1}</span>
           <span class="play" aria-hidden="true">▶</span>
         </div>
@@ -57,7 +57,7 @@
   const rowHTML = (a) => `
     <a class="row r${a.rank}" href="${esc(safeUrl(a.url))}" target="_blank" rel="noopener">
       <span class="n">${a.rank}</span>
-      <span class="t"><img src="${esc(a.thumbnail_url)}" alt="" loading="lazy" /></span>
+      <span class="t"><img src="${esc(a.thumbnail_url)}" alt="${esc(a.title)}" loading="lazy" /></span>
       <span class="meta">
         <div class="v">${a.daily_gain != null
           ? `<span class="gain">▲ +${fmt(a.daily_gain)}</span><small>วิว/วัน</small><small class="total">· รวม ${fmt(a.view_count)}</small>`
@@ -173,7 +173,16 @@
 
   document.addEventListener("click", (ev) => {
     const chip = ev.target.closest(".chip");
-    if (chip) { load(chip.dataset.id); return; }
+    if (chip) {
+      ev.preventDefault(); // pre-rendered chips are <a href="food.html"> links for crawlers
+      load(chip.dataset.id);
+      // on the built site each category has its own page: keep the address bar shareable
+      if (document.body.dataset.ssr === "1") {
+        history.replaceState(null, "", `${chip.dataset.id}.html`);
+        retitle(chip.dataset.id);
+      }
+      return;
+    }
     if (ev.target.closest("[data-open-donate]")) { ev.preventDefault(); openDonate(); }
   });
   dlg.addEventListener("click", (ev) => { if (ev.target === dlg) dlg.close(); }); // tap backdrop to close
@@ -211,6 +220,23 @@
     return new Promise((r) => setTimeout(() => r(out), 250));
   }
 
+  // keep heading / intro / tab title in step with the category page we just switched to
+  // (same wording as build/prerender.mjs)
+  function retitle(id) {
+    const c = state.categories.find((x) => x.id === id);
+    if (!c) return;
+    const trend = id === "trending";
+    const name = trend ? "โฆษณามาแรง" : c.name_th.startsWith("โฆษณา") ? c.name_th : `โฆษณา${c.name_th}`;
+    const suffix = trend ? " ยอดวิวพุ่งต่อวัน" : " ยอดวิวสูงสุด";
+    const h1 = document.querySelector(".page-title"), intro = document.querySelector(".intro");
+    if (h1) h1.textContent = `${c.emoji} ${name}${suffix}`;
+    if (intro) intro.textContent = trend
+      ? "โฆษณาไทยจากช่องทางการของแบรนด์ เรียงตามยอดวิวที่เพิ่มขึ้นต่อวัน อัปเดตทุกวัน — อันดับ 1–3 ดูฟรี"
+      : `${name} 10 อันดับ จากช่องทางการของแบรนด์ เรียงตามยอดวิว อัปเดตทุกวัน — อันดับ 1–3 ดูฟรี`;
+    document.title = `${name}${trend ? " ยอดวิวพุ่งต่อวัน" : " ยอดวิวสูงสุด 10 อันดับ"} — แอดชาร์ต AdChart TH`;
+  }
+
   if (DEMO) $("#demoBanner").hidden = false;
-  load("");
+  // category pages (food.html, car.html…) are pre-rendered at build time with data-category set
+  load(document.body.dataset.category || "");
 })();
