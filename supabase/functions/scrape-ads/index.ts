@@ -14,7 +14,7 @@ type Row = {
 };
 
 // clips ABOUT ads rather than ads themselves (how-to remove pop-ups, ad-vs-reality, reactions)
-const NOT_AD = /วิธี|ลบโฆษณา|บล็อก|ปิดโฆษณา|เด้ง|ป๊อปอัพ|ไวรัส|vs\.?\s*ความเป็นจริง|เทคนิค|ทริค|reaction|รีแอค|ดูโฆษณา|ต่างชาติ|ฝรั่ง|บทความ|แนะนำ|รีวิว|review|meme|illegal|สเปค|สอน|บอกต่อ|highlight|championship|qualifier|grand ?final|tournament|esports?|🔴|livestream|ไลฟ์สด|ถ่ายทอดสด|unboxing|แกะกล่อง|gameplay|^\s*\d+\s*(อันดับ|เกม|game)/i;
+const NOT_AD = /วิธี|ลบโฆษณา|บล็อก|ปิดโฆษณา|เด้ง|ป๊อปอัพ|ไวรัส|vs\.?\s*ความเป็นจริง|เทคนิค|ทริค|reaction|รีแอค|ดูโฆษณา|ต่างชาติ|ฝรั่ง|บทความ|แนะนำ|รีวิว|review|meme|illegal|สเปค|สอน|บอกต่อ|highlight|championship|qualifier|grand ?final|tournament|esports?|🔴|livestream|ไลฟ์สด|ถ่ายทอดสด|unboxing|แกะกล่อง|gameplay|เบื้องหลัง|behind ?the ?scenes?|making ?of|^\s*\d+\s*(อันดับ|เกม|game)/i;
 
 // "Official only": the channel name must contain a known brand (categories.brands, all rows
 // unioned) and must not look like a fan / re-upload / news channel.
@@ -41,7 +41,7 @@ async function page(query: string, offset: number, freshness = ""): Promise<any[
 // find official channels best; results are merged, filtered, ranked.
 // Current setup: 25 searches/day ≈ 750 requests/month (Brave free credit ≈ 1,000). Trending has no
 // searches of its own (query ''); it ranks the ads already in the database (see rankTrending).
-async function topTen(query: string, match: string | null, freshness = "") {
+async function topTen(query: string, match: string | null, freshness = "", exclude: Set<string> = new Set()) {
   // category keyword check: the search engine pads weak matches with unrelated ads
   const fits = match ? new RegExp(match, "i") : null;
   const all: any[] = [];
@@ -49,7 +49,7 @@ async function topTen(query: string, match: string | null, freshness = "") {
     all.push(...(await page(q, 0, freshness)));
     await new Promise((ok) => setTimeout(ok, 1100)); // stay under 1 request/second
   }
-  const pool = pick(all, fits).map(({ raw: _raw, ...x }) => x); // every official ad found (for trending)
+  const pool = pick(all, fits, exclude).map(({ raw: _raw, ...x }) => x); // every official ad found (for trending)
   const top: Row[] = pool.slice(0, 10).map(({ published_at: _p, ...x }, i) => ({ ...x, rank: i + 1 }));
   return { top, pool };
 }
@@ -99,6 +99,19 @@ async function databaseAds(db: ReturnType<typeof admin>) {
     if (Date.parse(latest.get(a.category_id)!) - Date.parse(a.scraped_at) < 60_000) byVideo.set(a.video_id, a);
   }
   return [...byVideo.values()];
+}
+
+// videos currently ranked in any OTHER normal category (every row, not one-per-video: an ad that sits
+// in two categories must still count as "shown elsewhere")
+async function shownElsewhere(db: ReturnType<typeof admin>, catId: string) {
+  const { data, error } = await db.from("ads").select("category_id, url, scraped_at")
+    .neq("category_id", TRENDING).neq("category_id", catId);
+  if (error) throw error;
+  const latest = new Map<string, string>();
+  for (const a of data ?? []) if ((latest.get(a.category_id) ?? "") < a.scraped_at) latest.set(a.category_id, a.scraped_at);
+  return new Set((data ?? [])
+    .filter((a) => Date.parse(latest.get(a.category_id)!) - Date.parse(a.scraped_at) < 60_000)
+    .map((a) => videoKey(a.url)));
 }
 
 // live view counts for the database ads -> today's snapshot (source 'youtube') + fresh counts on the site
@@ -161,27 +174,25 @@ async function rerankByLiveViews(db: ReturnType<typeof admin>) {
 
 async function rankTrending(db: ReturnType<typeof admin>, ads: any[]) {
   const today = bangkokDay(), since = bangkokDay(-8);
-  const inDb = new Set(ads.map((a) => a.video_id));
+  // match by YouTube video id, not stored link (the same video may have been saved under two links)
+  const inDb = new Set(ads.map((a) => videoKey(a.url)));
   const snaps = (await allRows(() => db.from("view_snapshots")
     .select("video_id, day, view_count, title, channel, thumbnail_url, url, taken_at, source")
     .eq("source", "youtube").gte("day", since).order("day", { ascending: false })))
-    .filter((s) => inDb.has(s.video_id));
+    .filter((s) => inDb.has(videoKey(s.url)));
   const todayRows = snaps.filter((s) => s.day === today);
   const prevById = new Map<string, any>(); // latest earlier YouTube snapshot per video (rows are newest first)
-  for (const s of snaps) if (s.day < today && !prevById.has(s.video_id)) prevById.set(s.video_id, s);
+  for (const s of snaps) if (s.day < today && !prevById.has(videoKey(s.url))) prevById.set(videoKey(s.url), s);
 
   const scored = todayRows.map((s) => {
-    const prev = prevById.get(s.video_id);
+    const prev = prevById.get(videoKey(s.url));
     if (!prev) return { s, gain: 0 }; // needs two YouTube readings
     // real elapsed time between the two readings (at least 6 hours, so tiny gaps don't blow up)
     const days = Math.max(0.25, (Date.parse(s.taken_at) - Date.parse(prev.taken_at)) / 864e5);
     return { s, gain: Math.round((s.view_count - prev.view_count) / days) };
   }).filter((x) => x.gain > 0).sort((a, b) => b.gain - a.gain);
   const seenVideo = new Set<string>(); // one entry per YouTube video, even if stored under two links
-  const top = scored.filter(({ s }) => {
-    const k = youtubeId(s.url) ?? s.video_id;
-    return !seenVideo.has(k) && !!seenVideo.add(k);
-  }).slice(0, 10);
+  const top = scored.filter(({ s }) => !seenVideo.has(videoKey(s.url)) && !!seenVideo.add(videoKey(s.url))).slice(0, 10);
 
   const rows = top.map(({ s, gain }, i) => ({
     rank: i + 1, video_id: s.video_id, title: s.title, channel: s.channel,
@@ -193,9 +204,18 @@ async function rankTrending(db: ReturnType<typeof admin>, ads: any[]) {
   return rows.length;
 }
 
-function pick(results: any[], fits: RegExp | null) {
-  const seen = new Set<string>();
+// one standard link per YouTube video (youtube.com / www / m. / youtu.be all become the same),
+// so the same clip can't be listed twice
+const canonicalUrl = (url: string) => {
+  const id = youtubeId(url);
+  return id ? `https://www.youtube.com/watch?v=${id}` : url;
+};
+const videoKey = (url: string) => youtubeId(url) ?? url;
+
+function pick(results: any[], fits: RegExp | null, exclude: Set<string> = new Set()) {
+  const seen = new Set<string>(exclude);
   return results
+    .map((x) => ({ ...x, url: canonicalUrl(String(x.url ?? "")) }))
     .map((x) => ({
       video_id: x.url,
       // drop the " - YouTube" / " | TikTok" style suffix search engines append
@@ -208,7 +228,8 @@ function pick(results: any[], fits: RegExp | null) {
       raw: x,
     }))
     .filter((x) => /^https:\/\//.test(x.url) && x.view_count > 0 && x.thumbnail_url && !NOT_AD.test(x.title) &&
-      (!fits || fits.test(`${x.title} ${x.channel}`)) && isOfficial(x.channel) && !seen.has(x.url) && seen.add(x.url))
+      (!fits || fits.test(`${x.title} ${x.channel}`)) && isOfficial(x.channel) &&
+      !seen.has(videoKey(x.url)) && !!seen.add(videoKey(x.url)))
     .sort((a, b) => b.view_count - a.view_count);
 }
 
@@ -259,7 +280,11 @@ Deno.serve(async (req) => {
   const brandList = (all ?? []).map((c) => c.brands).filter(Boolean).join("|");
   if (!brandList) return json({ error: "no brands configured in categories.brands" }, 500);
   OFFICIAL = new RegExp(brandList, "i");
-  const cats = only ? (all ?? []).filter((c) => c.id === only) : all;
+  // theme categories (no brand list of their own, e.g. โฆษณาซึ้ง) run last and skip ads that
+  // another category already shows, so the same ad isn't listed in two categories
+  const isTheme = (c: any) => !c.brands && c.id !== TRENDING;
+  const cats = (only ? (all ?? []).filter((c) => c.id === only) : [...(all ?? [])])
+    .sort((a, b) => Number(isTheme(a)) - Number(isTheme(b)));
 
   const report: Record<string, string | number> = {};
   const today = bangkokDay();
@@ -268,7 +293,8 @@ Deno.serve(async (req) => {
     try {
       // trending's own searches (if any) look at the past month only; they just feed the snapshot pool
       const isTrend = c.id === TRENDING;
-      const { top, pool } = await topTen(c.query, c.match, isTrend ? "pm" : "");
+      const exclude = isTheme(c) ? await shownElsewhere(db, c.id) : new Set<string>();
+      const { top, pool } = await topTen(c.query, c.match, isTrend ? "pm" : "", exclude);
       if (!isTrend) {
         const { error: e } = await db.rpc("replace_category_ads", { p_category: c.id, p_rows: top });
         if (e) throw e;
