@@ -131,6 +131,34 @@ async function refreshFromYouTube(db: ReturnType<typeof admin>, ads: any[]) {
   return `${done}/${ads.length} database ads refreshed from YouTube (${ids.length} videos${notYt ? `, ${notYt} not on YouTube` : ""})`;
 }
 
+// categories were ordered by Brave's (stale) counts; after the live refresh, re-order each
+// category by its live view counts so "ranked by views" stays true
+async function rerankByLiveViews(db: ReturnType<typeof admin>) {
+  const { data, error } = await db.from("ads")
+    .select("category_id, rank, video_id, title, channel, thumbnail_url, url, view_count, scraped_at")
+    .neq("category_id", TRENDING);
+  if (error) throw error;
+  const latest = new Map<string, string>();
+  for (const a of data ?? []) if ((latest.get(a.category_id) ?? "") < a.scraped_at) latest.set(a.category_id, a.scraped_at);
+  const byCat = new Map<string, any[]>();
+  for (const a of data ?? []) {
+    if (Date.parse(latest.get(a.category_id)!) - Date.parse(a.scraped_at) >= 60_000) continue; // leftover rows
+    byCat.set(a.category_id, [...(byCat.get(a.category_id) ?? []), a]);
+  }
+  let moved = 0;
+  for (const [cat, rows] of byCat) {
+    const sorted = [...rows].sort((a, b) => b.view_count - a.view_count);
+    if (sorted.every((a, i) => a.rank === i + 1)) continue;
+    moved++;
+    const { error: e } = await db.rpc("replace_category_ads", {
+      p_category: cat,
+      p_rows: sorted.map(({ category_id: _c, scraped_at: _s, ...a }, i) => ({ ...a, rank: i + 1 })),
+    });
+    if (e) throw e;
+  }
+  return moved;
+}
+
 async function rankTrending(db: ReturnType<typeof admin>, ads: any[]) {
   const today = bangkokDay(), since = bangkokDay(-8);
   const inDb = new Set(ads.map((a) => a.video_id));
@@ -261,8 +289,10 @@ Deno.serve(async (req) => {
   if (!only || only === TRENDING) {
     try {
       const ads = await databaseAds(db);
-      try { report.youtube = await refreshFromYouTube(db, ads); }
-      catch (e) { report.youtube = `error: ${(e as Error).message}`; } // trending still ranks what it has
+      try {
+        report.youtube = await refreshFromYouTube(db, ads);
+        if (YT_KEY) report.categories_reordered = await rerankByLiveViews(db);
+      } catch (e) { report.youtube = `error: ${(e as Error).message}`; } // trending still ranks what it has
       report.trending_ranked = await rankTrending(db, ads);
     } catch (e) { report.trending_ranked = `error: ${(e as Error).message}`; }
   }
