@@ -80,7 +80,9 @@
         : "หมวดนี้ยังไม่มีข้อมูล"}</div>`;
       return;
     }
-    let html = (cat.id === "trending" ? `<p class="note">เรียงตามยอดวิวที่เพิ่มขึ้นต่อวัน</p>` : "") + cat.items.map(rowHTML).join("");
+    const note = cat.id === "trending" ? "เรียงตามยอดวิวที่เพิ่มขึ้นต่อวัน"
+      : cat.id === "youtube" ? "ค้นหาและนับยอดวิวจาก YouTube โดยตรง (ช่องทางการของแบรนด์)" : "";
+    let html = (note ? `<p class="note">${note}</p>` : "") + cat.items.map(rowHTML).join("");
     const hidden = Math.max(0, (cat.total || 10) - cat.items.length);
     if (!cat.unlocked && hidden > 0) {
       const from = cat.items.length + 1, to = cat.items.length + hidden;

@@ -7,6 +7,7 @@ import { admin, json } from "../_shared/util.ts";
 
 const BRAVE = "https://api.search.brave.com/res/v1/videos/search";
 const KEY = Deno.env.get("BRAVE_API_KEY") ?? "";
+const YT_KEY = Deno.env.get("YOUTUBE_API_KEY") ?? "";
 
 type Row = {
   rank: number; video_id: string; title: string; channel: string;
@@ -54,6 +55,45 @@ async function topTen(query: string, match: string | null, freshness = "", exclu
   return { top, pool };
 }
 
+// ---------- YouTube-only categories (categories.source = 'youtube') ----------
+// Found AND counted by the YouTube Data API alone (no Brave): search.list (100 quota units per
+// search, max 4/day = 400) ordered by view count in Thailand, then videos.list for live counts
+// (1 unit per 50 videos). Results are shaped like Brave results so pick() filters them the same way.
+async function ytSearch(query: string): Promise<any[]> {
+  const ids: string[] = [];
+  for (const q of query.split(";").map((s) => s.trim()).filter(Boolean).slice(0, 4)) {
+    const u = new URL("https://www.googleapis.com/youtube/v3/search");
+    u.search = new URLSearchParams({ part: "snippet", q, type: "video", regionCode: "TH", relevanceLanguage: "th",
+      order: "viewCount", maxResults: "50", safeSearch: "strict", key: YT_KEY }).toString();
+    const r = await fetch(u);
+    if (!r.ok) throw new Error(`youtube search ${r.status}: ${(await r.text()).slice(0, 200)}`);
+    for (const it of (await r.json()).items ?? []) if (it.id?.videoId) ids.push(it.id.videoId);
+  }
+  const uniq = [...new Set(ids)], out: any[] = [];
+  for (let i = 0; i < uniq.length; i += 50) {
+    const u = new URL("https://www.googleapis.com/youtube/v3/videos");
+    u.search = new URLSearchParams({ part: "snippet,statistics", id: uniq.slice(i, i + 50).join(","), key: YT_KEY }).toString();
+    const r = await fetch(u);
+    if (!r.ok) throw new Error(`youtube ${r.status}: ${(await r.text()).slice(0, 200)}`);
+    for (const v of (await r.json()).items ?? []) {
+      const th = v.snippet?.thumbnails ?? {};
+      out.push({
+        url: `https://www.youtube.com/watch?v=${v.id}`, title: v.snippet?.title ?? "",
+        video: { creator: v.snippet?.channelTitle ?? "", views: Number(v.statistics?.viewCount ?? 0) },
+        thumbnail: { src: (th.high ?? th.medium ?? th.default)?.url ?? "" }, page_age: v.snippet?.publishedAt,
+      });
+    }
+  }
+  return out;
+}
+
+async function ytTopTen(query: string, match: string | null, exclude: Set<string> = new Set()) {
+  if (!YT_KEY) throw new Error("YOUTUBE_API_KEY secret not set");
+  const pool = pick(await ytSearch(query), match ? new RegExp(match, "i") : null, exclude).map(({ raw: _raw, ...x }) => x);
+  const top: Row[] = pool.slice(0, 10).map(({ published_at: _p, ...x }, i) => ({ ...x, rank: i + 1 }));
+  return { top, pool };
+}
+
 // ---------- trending ("มาแรง"): views gained per day ----------
 const TRENDING = "trending";
 const bangkokDay = (offsetDays = 0) =>
@@ -73,7 +113,6 @@ async function allRows(q: () => any) { // PostgREST returns at most 1000 rows pe
 // views they gained per day. Brave's search index doesn't refresh view counts (0 of 99 changed in
 // 2 days), so live counts for these ads come from the YouTube Data API (videos.list: 1 quota unit per
 // 50 videos ≈ 2 units/day of the free 10,000). Gains only ever compare YouTube count with YouTube count.
-const YT_KEY = Deno.env.get("YOUTUBE_API_KEY") ?? "";
 
 function youtubeId(url: string): string | null {
   try {
@@ -103,9 +142,9 @@ async function databaseAds(db: ReturnType<typeof admin>) {
 
 // videos currently ranked in any OTHER normal category (every row, not one-per-video: an ad that sits
 // in two categories must still count as "shown elsewhere")
-async function shownElsewhere(db: ReturnType<typeof admin>, catId: string) {
+async function shownElsewhere(db: ReturnType<typeof admin>, catId: string, ignore: string[] = []) {
   const { data, error } = await db.from("ads").select("category_id, url, scraped_at")
-    .neq("category_id", TRENDING).neq("category_id", catId);
+    .not("category_id", "in", `(${[TRENDING, catId, ...ignore].join(",")})`);
   if (error) throw error;
   const latest = new Map<string, string>();
   for (const a of data ?? []) if ((latest.get(a.category_id) ?? "") < a.scraped_at) latest.set(a.category_id, a.scraped_at);
@@ -242,14 +281,14 @@ function pick(results: any[], fits: RegExp | null, exclude: Set<string> = new Se
 
 // Tuning helper: per search, how many results came back and why each was dropped. Writes nothing.
 async function dryRun(db: ReturnType<typeof admin>, id: string, queryOverride: string | null) {
-  const { data: all } = await db.from("categories").select("id, query, match, brands");
+  const { data: all } = await db.from("categories").select("id, query, match, brands, source");
   const cat = (all ?? []).find((c) => c.id === id);
   if (!cat) return json({ error: "no such category" }, 404);
   OFFICIAL = new RegExp((all ?? []).map((c) => c.brands).filter(Boolean).join("|"), "i");
   const fits = cat.match ? new RegExp(cat.match, "i") : null;
   const out: unknown[] = [];
   for (const q of (queryOverride ?? cat.query).split(";").map((s: string) => s.trim()).filter(Boolean).slice(0, 4)) {
-    const res = await page(q, 0, id === TRENDING ? "pm" : "");
+    const res = cat.source === "youtube" ? await ytSearch(q) : await page(q, 0, id === TRENDING ? "pm" : "");
     const kept: string[] = [], dropped: Record<string, string[]> = {};
     for (const x of res) {
       const title = String(x.title ?? "").replace(/\s*[-|–]\s*(YouTube|TikTok|Facebook|Vimeo|Dailymotion)\s*$/i, "").trim();
@@ -282,14 +321,17 @@ Deno.serve(async (req) => {
   const body = await req.json().catch(() => ({}));
   const only = typeof body?.only === "string" ? body.only : "";
   if (only && body?.dry) return dryRun(db, only, typeof body.query === "string" ? body.query : null);
-  const { data: all, error } = await db.from("categories").select("id, query, match, brands");
+  const { data: all, error } = await db.from("categories").select("id, query, match, brands, source");
   if (error) return json({ error: error.message }, 500);
   const brandList = (all ?? []).map((c) => c.brands).filter(Boolean).join("|");
   if (!brandList) return json({ error: "no brands configured in categories.brands" }, 500);
   OFFICIAL = new RegExp(brandList, "i");
   // theme categories (no brand list of their own, e.g. โฆษณาซึ้ง) run last and skip ads that
   // another category already shows, so the same ad isn't listed in two categories
-  const isTheme = (c: any) => !c.brands && c.id !== TRENDING;
+  // YouTube-only categories are a different view of the same ads (ranked by YouTube's own search), so
+  // they neither skip ads shown elsewhere nor take ads away from theme categories
+  const ytCats = (all ?? []).filter((c) => c.source === "youtube").map((c) => c.id);
+  const isTheme = (c: any) => !c.brands && c.id !== TRENDING && c.source !== "youtube";
   const cats = (only ? (all ?? []).filter((c) => c.id === only) : [...(all ?? [])])
     .sort((a, b) => Number(isTheme(a)) - Number(isTheme(b)));
 
@@ -300,8 +342,10 @@ Deno.serve(async (req) => {
     try {
       // trending's own searches (if any) look at the past month only; they just feed the snapshot pool
       const isTrend = c.id === TRENDING;
-      const exclude = isTheme(c) ? await shownElsewhere(db, c.id) : new Set<string>();
-      const { top, pool } = await topTen(c.query, c.match, isTrend ? "pm" : "", exclude);
+      const exclude = isTheme(c) ? await shownElsewhere(db, c.id, ytCats) : new Set<string>();
+      const { top, pool } = c.source === "youtube"
+        ? await ytTopTen(c.query, c.match, exclude)
+        : await topTen(c.query, c.match, isTrend ? "pm" : "", exclude);
       if (!isTrend) {
         const { error: e } = await db.rpc("replace_category_ads", { p_category: c.id, p_rows: top });
         if (e) throw e;
@@ -310,7 +354,7 @@ Deno.serve(async (req) => {
       const { error: se } = await db.from("view_snapshots").upsert(
         pool.map((x) => ({ video_id: x.video_id, day: today, view_count: x.view_count, title: x.title,
           channel: x.channel, thumbnail_url: x.thumbnail_url, url: x.url, published_at: x.published_at,
-          source: "brave", taken_at: new Date().toISOString() })), // youtube refresh below overwrites DB ads
+          source: c.source === "youtube" ? "youtube" : "brave", taken_at: new Date().toISOString() })), // youtube refresh below overwrites DB ads
         { onConflict: "video_id,day" },
       );
       const n = isTrend ? `${pool.length} new ads found` : top.length;
@@ -323,9 +367,9 @@ Deno.serve(async (req) => {
     try {
       const ads = await databaseAds(db);
       try {
-        report.youtube = await refreshFromYouTube(db, ads);
+        report.live_counts = await refreshFromYouTube(db, ads);
         if (YT_KEY) report.categories_reordered = await rerankByLiveViews(db);
-      } catch (e) { report.youtube = `error: ${(e as Error).message}`; } // trending still ranks what it has
+      } catch (e) { report.live_counts = `error: ${(e as Error).message}`; } // trending still ranks what it has
       report.trending_ranked = await rankTrending(db, ads);
     } catch (e) { report.trending_ranked = `error: ${(e as Error).message}`; }
   }
