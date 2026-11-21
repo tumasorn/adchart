@@ -120,7 +120,7 @@ async function refreshFromYouTube(db: ReturnType<typeof admin>, ads: any[]) {
   const byYt = new Map<string, any[]>(); // the same video can sit in the DB under two link variants
   for (const a of ads) { const id = youtubeId(a.url); if (id) byYt.set(id, [...(byYt.get(id) ?? []), a]); }
   const ids = [...byYt.keys()], today = bangkokDay(), now = new Date().toISOString();
-  let done = 0;
+  let done = 0, braveWon = 0;
   for (let i = 0; i < ids.length; i += 50) {
     const u = new URL("https://www.googleapis.com/youtube/v3/videos");
     u.search = new URLSearchParams({ part: "statistics", id: ids.slice(i, i + 50).join(","), key: YT_KEY }).toString();
@@ -135,13 +135,20 @@ async function refreshFromYouTube(db: ReturnType<typeof admin>, ads: any[]) {
           thumbnail_url: a.thumbnail_url, url: a.url, source: "youtube", taken_at: now,
         }, { onConflict: "video_id,day" });
         if (error) throw error;
-        await db.from("ads").update({ view_count: views }).eq("video_id", a.video_id); // live count on the site too
+        // shown count: YouTube (Google API) is the primary source; if Brave reported a higher number
+        // for this ad, show the higher one. (The snapshot above keeps the pure YouTube number, so
+        // trending gains always compare YouTube with YouTube.)
+        const brave = Number(a.view_count) || 0;
+        const shown = Math.max(views, brave);
+        if (shown > views) braveWon++;
+        await db.from("ads").update({ view_count: shown }).eq("video_id", a.video_id);
         done++;
       }
     }
   }
   const notYt = ads.filter((a) => !youtubeId(a.url)).length;
-  return `${done}/${ads.length} database ads refreshed from YouTube (${ids.length} videos${notYt ? `, ${notYt} not on YouTube` : ""})`;
+  return `${done}/${ads.length} database ads refreshed from YouTube (${ids.length} videos${notYt ? `, ${notYt} not on YouTube` : ""}); ` +
+    `higher count: YouTube ${done - braveWon}, Brave ${braveWon}`;
 }
 
 // categories were ordered by Brave's (stale) counts; after the live refresh, re-order each
