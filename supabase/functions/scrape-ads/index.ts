@@ -328,9 +328,10 @@ Deno.serve(async (req) => {
   OFFICIAL = new RegExp(brandList, "i");
   // theme categories (no brand list of their own, e.g. โฆษณาซึ้ง) run last and skip ads that
   // another category already shows, so the same ad isn't listed in two categories
-  // YouTube-only categories are a different view of the same ads (ranked by YouTube's own search), so
-  // they neither skip ads shown elsewhere nor take ads away from theme categories
-  const ytCats = (all ?? []).filter((c) => c.source === "youtube").map((c) => c.id);
+  // the general YouTube category (source 'youtube', no brand list) is a different view of the same ads
+  // (ranked by YouTube's own search), so it neither skips ads shown elsewhere nor takes ads away from
+  // theme categories. YouTube-sourced BRAND categories (shopping, apps, ...) count like any other.
+  const ytCats = (all ?? []).filter((c) => c.source === "youtube" && !c.brands).map((c) => c.id);
   const isTheme = (c: any) => !c.brands && c.id !== TRENDING && c.source !== "youtube";
   const cats = (only ? (all ?? []).filter((c) => c.id === only) : [...(all ?? [])])
     .sort((a, b) => Number(isTheme(a)) - Number(isTheme(b)));
