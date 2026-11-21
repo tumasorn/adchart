@@ -49,3 +49,8 @@ on conflict (id) do nothing;
 alter table public.view_snapshots add column if not exists taken_at timestamptz not null default now();
 -- trending has no searches of its own: Brave's past-month filter returned almost nothing
 update public.categories set query = '' where id = 'trending';
+
+-- 2026-11-21: Brave's index never refreshed view counts (0 of 99 changed in 2 days), so trending now
+-- ranks only ads already in the database, using live YouTube counts (scrape-ads refreshFromYouTube,
+-- needs the YOUTUBE_API_KEY edge secret). Gains compare youtube-sourced snapshots only.
+alter table public.view_snapshots add column if not exists source text not null default 'brave';
