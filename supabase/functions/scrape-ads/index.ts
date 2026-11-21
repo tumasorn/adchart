@@ -104,8 +104,8 @@ async function databaseAds(db: ReturnType<typeof admin>) {
 // live view counts for the database ads -> today's snapshot (source 'youtube') + fresh counts on the site
 async function refreshFromYouTube(db: ReturnType<typeof admin>, ads: any[]) {
   if (!YT_KEY) return "skipped: YOUTUBE_API_KEY secret not set";
-  const byYt = new Map<string, any>();
-  for (const a of ads) { const id = youtubeId(a.url); if (id) byYt.set(id, a); }
+  const byYt = new Map<string, any[]>(); // the same video can sit in the DB under two link variants
+  for (const a of ads) { const id = youtubeId(a.url); if (id) byYt.set(id, [...(byYt.get(id) ?? []), a]); }
   const ids = [...byYt.keys()], today = bangkokDay(), now = new Date().toISOString();
   let done = 0;
   for (let i = 0; i < ids.length; i += 50) {
@@ -114,18 +114,21 @@ async function refreshFromYouTube(db: ReturnType<typeof admin>, ads: any[]) {
     const r = await fetch(u);
     if (!r.ok) throw new Error(`youtube ${r.status}: ${(await r.text()).slice(0, 200)}`);
     for (const item of (await r.json()).items ?? []) {
-      const a = byYt.get(item.id), views = Number(item.statistics?.viewCount);
-      if (!a || !Number.isFinite(views)) continue;
-      const { error } = await db.from("view_snapshots").upsert({
-        video_id: a.video_id, day: today, view_count: views, title: a.title, channel: a.channel,
-        thumbnail_url: a.thumbnail_url, url: a.url, source: "youtube", taken_at: now,
-      }, { onConflict: "video_id,day" });
-      if (error) throw error;
-      await db.from("ads").update({ view_count: views }).eq("video_id", a.video_id); // live count on the site too
-      done++;
+      const views = Number(item.statistics?.viewCount);
+      if (!Number.isFinite(views)) continue;
+      for (const a of byYt.get(item.id) ?? []) {
+        const { error } = await db.from("view_snapshots").upsert({
+          video_id: a.video_id, day: today, view_count: views, title: a.title, channel: a.channel,
+          thumbnail_url: a.thumbnail_url, url: a.url, source: "youtube", taken_at: now,
+        }, { onConflict: "video_id,day" });
+        if (error) throw error;
+        await db.from("ads").update({ view_count: views }).eq("video_id", a.video_id); // live count on the site too
+        done++;
+      }
     }
   }
-  return `${done}/${ids.length} YouTube ads refreshed (${ads.length - ids.length} not on YouTube)`;
+  const notYt = ads.filter((a) => !youtubeId(a.url)).length;
+  return `${done}/${ads.length} database ads refreshed from YouTube (${ids.length} videos${notYt ? `, ${notYt} not on YouTube` : ""})`;
 }
 
 async function rankTrending(db: ReturnType<typeof admin>, ads: any[]) {
@@ -145,9 +148,14 @@ async function rankTrending(db: ReturnType<typeof admin>, ads: any[]) {
     // real elapsed time between the two readings (at least 6 hours, so tiny gaps don't blow up)
     const days = Math.max(0.25, (Date.parse(s.taken_at) - Date.parse(prev.taken_at)) / 864e5);
     return { s, gain: Math.round((s.view_count - prev.view_count) / days) };
-  }).filter((x) => x.gain > 0).sort((a, b) => b.gain - a.gain).slice(0, 10);
+  }).filter((x) => x.gain > 0).sort((a, b) => b.gain - a.gain);
+  const seenVideo = new Set<string>(); // one entry per YouTube video, even if stored under two links
+  const top = scored.filter(({ s }) => {
+    const k = youtubeId(s.url) ?? s.video_id;
+    return !seenVideo.has(k) && !!seenVideo.add(k);
+  }).slice(0, 10);
 
-  const rows = scored.map(({ s, gain }, i) => ({
+  const rows = top.map(({ s, gain }, i) => ({
     rank: i + 1, video_id: s.video_id, title: s.title, channel: s.channel,
     thumbnail_url: s.thumbnail_url, url: s.url, view_count: s.view_count, daily_gain: gain,
   }));
