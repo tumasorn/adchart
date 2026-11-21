@@ -61,7 +61,12 @@ const itemList = (name, items) => ({
   itemListElement: items.map((a, i) => ({ "@type": "ListItem", position: i + 1, url: a.url, name: a.title })),
 });
 
-const tpl = await readFile(`${SRC}/index.html`, "utf8");
+// cache-busting: GitHub Pages lets browsers keep CSS/JS for 10 minutes, so after an update visitors
+// could see new HTML with an old stylesheet. Every build stamps the asset links with a version.
+const BUILD = Date.now().toString(36);
+const stamp = (html) => html.replace(/(href|src)="(style\.css|app\.js|config\.js|stats\.js)"/g, `$1="$2?v=${BUILD}"`);
+const tpl = stamp(await readFile(`${SRC}/index.html`, "utf8"));
+await writeFile(`${OUT}/contact.html`, stamp(await readFile(`${SRC}/contact.html`, "utf8")));
 const urls = [];
 
 function render({ id = "", file, title, desc, h1, intro, listCat }) {
